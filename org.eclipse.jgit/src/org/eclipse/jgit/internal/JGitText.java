@@ -953,8 +953,10 @@ public class JGitText extends TranslationBundle {
 	/***/ public String writingObjects;
 	/***/ public String wrongDecompressedLength;
 	/***/ public String worktreeBranchAlreadyCheckedOut;
+	/***/ public String worktreeHasUncommittedChanges;
 	/***/ public String worktreeIsLocked;
 	/***/ public String worktreeNameAlreadyExists;
+	/***/ public String worktreeNotFound;
 	/***/ public String worktreePathExists;
 	/***/ public String worktreePathRequired;
 	/***/ public String worktreeStartPointInvalid;

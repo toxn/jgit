@@ -17,6 +17,8 @@ import java.util.List;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.WorktreeAddCommand;
 import org.eclipse.jgit.api.WorktreeListCommand;
+import org.eclipse.jgit.api.WorktreePruneCommand;
+import org.eclipse.jgit.api.WorktreeRemoveCommand;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.pgm.internal.CLIText;
@@ -88,6 +90,12 @@ class Worktree extends TextBuiltin {
 			usage = "usage_worktreeAddLockReason")
 	private String lockReason;
 
+	// --- prune options ---
+
+	@Option(name = "--dry-run", aliases = {
+			"-n" }, usage = "usage_dryRun")
+	private boolean dryRun;
+
 	@Override
 	protected void run() throws Exception {
 		if (command == null) {
@@ -102,6 +110,13 @@ class Worktree extends TextBuiltin {
 				break;
 			case "list": //$NON-NLS-1$
 				runList();
+				break;
+			case "remove": //$NON-NLS-1$
+			case "rm": //$NON-NLS-1$
+				runRemove();
+				break;
+			case "prune": //$NON-NLS-1$
+				runPrune();
 				break;
 			default:
 				throw new JGitInternalException(MessageFormat.format(
@@ -151,6 +166,27 @@ class Worktree extends TextBuiltin {
 			outw.println(MessageFormat.format(
 					CLIText.get().worktreeAdded,
 					wt.getWorkTree().getAbsolutePath()));
+		}
+	}
+
+	private void runRemove() throws Exception {
+		if (args == null || args.isEmpty()) {
+			throw new JGitInternalException(
+					CLIText.get().worktreeSubcommandRequired);
+		}
+		new WorktreeRemoveCommand(db)
+				.setName(args.get(0))
+				.setForce(force)
+				.call();
+	}
+
+	private void runPrune() throws Exception {
+		WorktreePruneCommand pruneCmd = new WorktreePruneCommand(db)
+				.setDryRun(dryRun);
+		List<String> pruned = pruneCmd.call();
+		for (String n : pruned) {
+			String prefix = dryRun ? "Would remove " : "Removing "; //$NON-NLS-1$ //$NON-NLS-2$
+			outw.println(prefix + n);
 		}
 	}
 

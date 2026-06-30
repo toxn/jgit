@@ -840,6 +840,35 @@ public class Git implements AutoCloseable {
 	}
 
 	/**
+	 * Return a command object to execute a {@code worktree remove} command.
+	 *
+	 * <p>
+	 * Removes a linked worktree by name.
+	 *
+	 * @return a {@link org.eclipse.jgit.api.WorktreeRemoveCommand} used to
+	 *         remove a linked worktree
+	 * @since 7.8
+	 */
+	public WorktreeRemoveCommand worktreeRemove() {
+		return new WorktreeRemoveCommand(repo);
+	}
+
+	/**
+	 * Return a command object to execute a {@code worktree prune} command.
+	 *
+	 * <p>
+	 * Removes stale linked worktree admin directories whose working tree no
+	 * longer exists.
+	 *
+	 * @return a {@link org.eclipse.jgit.api.WorktreePruneCommand} used to
+	 *         prune stale worktrees
+	 * @since 7.8
+	 */
+	public WorktreePruneCommand worktreePrune() {
+		return new WorktreePruneCommand(repo);
+	}
+
+	/**
 	 * Get repository
 	 *
 	 * @return the git repository this class is interacting with; see
