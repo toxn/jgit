@@ -869,6 +869,63 @@ public class Git implements AutoCloseable {
 	}
 
 	/**
+	 * Return a command object to execute a {@code worktree lock} command.
+	 *
+	 * <p>
+	 * Locks a linked worktree to prevent automatic pruning.
+	 *
+	 * @return a {@link org.eclipse.jgit.api.WorktreeLockCommand} used to lock
+	 *         a linked worktree
+	 * @since 7.8
+	 */
+	public WorktreeLockCommand worktreeLock() {
+		return new WorktreeLockCommand(repo);
+	}
+
+	/**
+	 * Return a command object to execute a {@code worktree unlock} command.
+	 *
+	 * <p>
+	 * Unlocks a linked worktree so it can be pruned or removed.
+	 *
+	 * @return a {@link org.eclipse.jgit.api.WorktreeUnlockCommand} used to
+	 *         unlock a linked worktree
+	 * @since 7.8
+	 */
+	public WorktreeUnlockCommand worktreeUnlock() {
+		return new WorktreeUnlockCommand(repo);
+	}
+
+	/**
+	 * Return a command object to execute a {@code worktree move} command.
+	 *
+	 * <p>
+	 * Moves a linked worktree to a new location.
+	 *
+	 * @return a {@link org.eclipse.jgit.api.WorktreeMoveCommand} used to move
+	 *         a linked worktree
+	 * @since 7.8
+	 */
+	public WorktreeMoveCommand worktreeMove() {
+		return new WorktreeMoveCommand(repo);
+	}
+
+	/**
+	 * Return a command object to execute a {@code worktree repair} command.
+	 *
+	 * <p>
+	 * Repairs worktree administrative files after a working tree was moved
+	 * externally.
+	 *
+	 * @return a {@link org.eclipse.jgit.api.WorktreeRepairCommand} used to
+	 *         repair worktree admin files
+	 * @since 7.8
+	 */
+	public WorktreeRepairCommand worktreeRepair() {
+		return new WorktreeRepairCommand(repo);
+	}
+
+	/**
 	 * Get repository
 	 *
 	 * @return the git repository this class is interacting with; see

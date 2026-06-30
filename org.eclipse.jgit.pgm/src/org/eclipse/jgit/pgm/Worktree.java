@@ -17,8 +17,12 @@ import java.util.List;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.WorktreeAddCommand;
 import org.eclipse.jgit.api.WorktreeListCommand;
+import org.eclipse.jgit.api.WorktreeLockCommand;
+import org.eclipse.jgit.api.WorktreeMoveCommand;
 import org.eclipse.jgit.api.WorktreePruneCommand;
 import org.eclipse.jgit.api.WorktreeRemoveCommand;
+import org.eclipse.jgit.api.WorktreeRepairCommand;
+import org.eclipse.jgit.api.WorktreeUnlockCommand;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.pgm.internal.CLIText;
@@ -118,6 +122,19 @@ class Worktree extends TextBuiltin {
 			case "prune": //$NON-NLS-1$
 				runPrune();
 				break;
+			case "lock": //$NON-NLS-1$
+				runLock();
+				break;
+			case "unlock": //$NON-NLS-1$
+				runUnlock();
+				break;
+			case "move": //$NON-NLS-1$
+			case "mv": //$NON-NLS-1$
+				runMove();
+				break;
+			case "repair": //$NON-NLS-1$
+				runRepair();
+				break;
 			default:
 				throw new JGitInternalException(MessageFormat.format(
 						CLIText.get().unknownSubcommand, command));
@@ -189,6 +206,64 @@ class Worktree extends TextBuiltin {
 			outw.println(prefix + n);
 		}
 	}
+
+	private void runLock() throws Exception {
+		if (args == null || args.isEmpty()) {
+			throw new JGitInternalException(
+					CLIText.get().worktreeSubcommandRequired);
+		}
+		new WorktreeLockCommand(db)
+				.setName(args.get(0))
+				.setReason(lockReason)
+				.call();
+	}
+
+	private void runUnlock() throws Exception {
+		if (args == null || args.isEmpty()) {
+			throw new JGitInternalException(
+					CLIText.get().worktreeSubcommandRequired);
+		}
+		new WorktreeUnlockCommand(db)
+				.setName(args.get(0))
+				.call();
+	}
+
+	private void runMove() throws Exception {
+		if (args == null || args.size() < 2) {
+			throw new JGitInternalException(
+					CLIText.get().worktreeSubcommandRequired);
+		}
+		File dest = new File(args.get(1));
+		if (!dest.isAbsolute()) {
+			dest = new File(System.getProperty("user.dir"), args.get(1)); //$NON-NLS-1$
+		}
+		new WorktreeMoveCommand(db)
+				.setName(args.get(0))
+				.setNewPath(dest)
+				.setForce(force)
+				.call();
+	}
+
+	private void runRepair() throws Exception {
+		if (args == null || args.size() < 2 || args.size() % 2 != 0) {
+			throw new JGitInternalException(
+					CLIText.get().worktreeSubcommandRequired);
+		}
+		WorktreeRepairCommand repairCmd = new WorktreeRepairCommand(db);
+		for (int i = 0; i < args.size(); i += 2) {
+			String wName = args.get(i);
+			File newPath = new File(args.get(i + 1));
+			if (!newPath.isAbsolute()) {
+				newPath = new File(System.getProperty("user.dir"), args.get(i + 1)); //$NON-NLS-1$
+			}
+			repairCmd.addPath(wName, newPath);
+		}
+		List<String> repaired = repairCmd.call();
+		for (String n : repaired) {
+			outw.println("Repaired worktree " + n); //$NON-NLS-1$
+		}
+	}
+
 
 	private void runList() throws Exception {
 		WorktreeListCommand cmd = new WorktreeListCommand(db);
