@@ -812,6 +812,20 @@ public class Git implements AutoCloseable {
 	}
 
 	/**
+	 * Return a command object to execute a {@code worktree add} command.
+	 *
+	 * <p>
+	 * Creates a new linked worktree at the given path.
+	 *
+	 * @return a {@link org.eclipse.jgit.api.WorktreeAddCommand} used to create
+	 *         a new linked worktree
+	 * @since 7.8
+	 */
+	public WorktreeAddCommand worktreeAdd() {
+		return new WorktreeAddCommand(repo);
+	}
+
+	/**
 	 * Return a command object to execute a {@code worktree list} command.
 	 *
 	 * <p>

@@ -9,11 +9,13 @@
  */
 package org.eclipse.jgit.pgm;
 
+import java.io.File;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.List;
 
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.WorktreeAddCommand;
 import org.eclipse.jgit.api.WorktreeListCommand;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.lib.ObjectId;
@@ -27,12 +29,11 @@ import org.kohsuke.args4j.Option;
  * Manage multiple working trees.
  *
  * <p>
- * Supported subcommands: {@code list}.
+ * Supported subcommands: {@code add}, {@code list}.
  *
  * <p>
- * Future subcommands (not yet implemented): {@code add}, {@code lock},
- * {@code move}, {@code prune}, {@code remove}, {@code repair},
- * {@code unlock}.
+ * Future subcommands (not yet implemented): {@code lock}, {@code move},
+ * {@code prune}, {@code remove}, {@code repair}, {@code unlock}.
  *
  * @see <a href=
  *      "https://git-scm.com/docs/git-worktree">Git documentation about
@@ -45,9 +46,11 @@ class Worktree extends TextBuiltin {
 	@Argument(index = 0, metaVar = "metaVar_command")
 	private String command;
 
-	/** Additional arguments (path, name, reason …). */
+	/** Additional arguments (path, name, reason, …). */
 	@Argument(index = 1, multiValued = true, metaVar = "metaVar_path")
 	private List<String> args;
+
+	// --- list options ---
 
 	@Option(name = "--porcelain", usage = "usage_worktreeListPorcelain")
 	private boolean porcelain;
@@ -59,6 +62,32 @@ class Worktree extends TextBuiltin {
 			"-v" }, usage = "usage_beVerbose")
 	private boolean verbose;
 
+	// --- add options ---
+
+	@Option(name = "-b", metaVar = "metaVar_branchName",
+			usage = "usage_worktreeAddNewBranch")
+	private String newBranch;
+
+	@Option(name = "-B", metaVar = "metaVar_branchName",
+			usage = "usage_worktreeAddForceBranch")
+	private String forceNewBranch;
+
+	@Option(name = "--detach", usage = "usage_worktreeAddDetach")
+	private boolean detach;
+
+	@Option(name = "--no-checkout", usage = "usage_worktreeAddNoCheckout")
+	private boolean noCheckout;
+
+	@Option(name = "--force", usage = "usage_worktreeAddForce")
+	private boolean force;
+
+	@Option(name = "--lock", usage = "usage_worktreeAddLock")
+	private boolean lock;
+
+	@Option(name = "--reason", metaVar = "metaVar_reason",
+			usage = "usage_worktreeAddLockReason")
+	private String lockReason;
+
 	@Override
 	protected void run() throws Exception {
 		if (command == null) {
@@ -68,6 +97,9 @@ class Worktree extends TextBuiltin {
 		}
 		try (Git git = new Git(db)) {
 			switch (command) {
+			case "add": //$NON-NLS-1$
+				runAdd();
+				break;
 			case "list": //$NON-NLS-1$
 				runList();
 				break;
@@ -75,6 +107,50 @@ class Worktree extends TextBuiltin {
 				throw new JGitInternalException(MessageFormat.format(
 						CLIText.get().unknownSubcommand, command));
 			}
+		}
+	}
+
+	private void runAdd() throws Exception {
+		if (args == null || args.isEmpty()) {
+			throw new JGitInternalException(
+					CLIText.get().worktreeSubcommandRequired);
+		}
+		String pathArg = args.get(0);
+		File wtPath = new File(pathArg);
+		if (!wtPath.isAbsolute()) {
+			// Resolve relative to the working directory
+			wtPath = new File(System.getProperty("user.dir"), pathArg); //$NON-NLS-1$
+		}
+
+		WorktreeAddCommand addCmd = new WorktreeAddCommand(db).setPath(wtPath);
+		if (newBranch != null) {
+			addCmd.setNewBranch(newBranch);
+		} else if (forceNewBranch != null) {
+			addCmd.setNewBranch(forceNewBranch);
+			addCmd.setForceNewBranch(true);
+		}
+		if (detach) {
+			addCmd.setDetach(true);
+		}
+		if (noCheckout) {
+			addCmd.setCheckout(false);
+		}
+		if (force) {
+			addCmd.setForce(true);
+		}
+		if (lock) {
+			addCmd.setLock(true);
+			addCmd.setLockReason(lockReason);
+		}
+		// start point: second arg if present
+		if (args.size() > 1) {
+			addCmd.setStartPoint(args.get(1));
+		}
+
+		try (org.eclipse.jgit.lib.Repository wt = addCmd.call()) {
+			outw.println(MessageFormat.format(
+					CLIText.get().worktreeAdded,
+					wt.getWorkTree().getAbsolutePath()));
 		}
 	}
 

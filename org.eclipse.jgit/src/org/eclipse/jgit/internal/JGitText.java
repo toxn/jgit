@@ -952,6 +952,12 @@ public class JGitText extends TranslationBundle {
 	/***/ public String writingOutCommitGraph;
 	/***/ public String writingObjects;
 	/***/ public String wrongDecompressedLength;
+	/***/ public String worktreeBranchAlreadyCheckedOut;
+	/***/ public String worktreeIsLocked;
+	/***/ public String worktreeNameAlreadyExists;
+	/***/ public String worktreePathExists;
+	/***/ public String worktreePathRequired;
+	/***/ public String worktreeStartPointInvalid;
 	/***/ public String wrongRepositoryState;
 	/***/ public String year;
 	/***/ public String years;
