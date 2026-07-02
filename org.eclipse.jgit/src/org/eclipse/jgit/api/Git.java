@@ -812,6 +812,20 @@ public class Git implements AutoCloseable {
 	}
 
 	/**
+	 * Return a command object to execute a {@code worktree list} command.
+	 *
+	 * <p>
+	 * Lists all worktrees (main and linked) of this repository.
+	 *
+	 * @return a {@link org.eclipse.jgit.api.WorktreeListCommand} used to list
+	 *         all worktrees
+	 * @since 7.8
+	 */
+	public WorktreeListCommand worktreeList() {
+		return new WorktreeListCommand(repo);
+	}
+
+	/**
 	 * Get repository
 	 *
 	 * @return the git repository this class is interacting with; see

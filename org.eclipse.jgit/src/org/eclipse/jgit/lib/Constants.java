@@ -233,6 +233,39 @@ public final class Constants {
 	/** Standard stash ref */
 	public static final String R_STASH = R_REFS + STASH;
 
+	/**
+	 * Prefix for per-worktree bisect refs ({@code refs/bisect/}).
+	 *
+	 * <p>
+	 * All refs under this prefix are per-worktree: each linked worktree
+	 * maintains its own bisect state independent of other worktrees.
+	 *
+	 * @since 7.8
+	 */
+	public static final String R_BISECT = R_REFS + "bisect/";
+
+	/**
+	 * Prefix for per-worktree worktree-scoped refs ({@code refs/worktree/}).
+	 *
+	 * <p>
+	 * All refs under this prefix are per-worktree as defined by the
+	 * git repository layout specification.
+	 *
+	 * @since 7.8
+	 */
+	public static final String R_WORKTREE = R_REFS + "worktree/";
+
+	/**
+	 * Prefix for per-worktree rebase rewritten refs ({@code refs/rewritten/}).
+	 *
+	 * <p>
+	 * All refs under this prefix are per-worktree: each linked worktree
+	 * maintains its own rebase-rewriting state.
+	 *
+	 * @since 7.8
+	 */
+	public static final String R_REWRITTEN = R_REFS + "rewritten/";
+
 	/** Logs folder name */
 	public static final String LOGS = "logs";
 
@@ -503,6 +536,42 @@ public final class Constants {
 	 * @since 7.0
 	 */
 	public static final String COMMONDIR_FILE = "commondir";
+
+	/**
+	 * Name of the folder (inside gitCommonDir) where linked worktrees are
+	 * stored.
+	 *
+	 * <p>
+	 * Each linked worktree has its own subdirectory under this folder
+	 * containing per-worktree state (HEAD, index, locked, gitdir, commondir).
+	 *
+	 * @since 7.8
+	 */
+	public static final String WORKTREES = "worktrees";
+
+	/**
+	 * Name of the {@code locked} file inside a worktree's admin directory
+	 * ({@code .git/worktrees/<name>/locked}).
+	 *
+	 * <p>
+	 * When this file is present the worktree is locked: {@code remove} and
+	 * {@code prune} refuse to delete it. The file content (if any) holds the
+	 * human-readable reason for the lock.
+	 *
+	 * @since 7.8
+	 */
+	public static final String LOCKED = "locked";
+
+	/**
+	 * Name of the {@code BISECT_HEAD} pseudo-ref.
+	 *
+	 * <p>
+	 * Written by {@code git bisect} during a bisect session. It is a
+	 * per-worktree ref: each linked worktree maintains its own bisect state.
+	 *
+	 * @since 7.8
+	 */
+	public static final String BISECT_HEAD = "BISECT_HEAD";
 
 	/**
 	 * Name of the folder (inside gitDir) where submodules are stored

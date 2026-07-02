@@ -319,4 +319,9 @@ public class CLIText extends TranslationBundle {
 	/***/ public String untrackedFiles;
 	/***/ public String updating;
 	/***/ public String usernameFor;
+	/***/ public String worktreeAlreadyLocked;
+	/***/ public String worktreeIsLocked;
+	/***/ public String worktreeNotFound;
+	/***/ public String worktreeSubcommandRequired;
+	/***/ public String worktreeAlreadyCheckedOut;
 }
