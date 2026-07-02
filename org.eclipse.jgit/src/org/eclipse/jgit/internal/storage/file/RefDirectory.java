@@ -14,14 +14,23 @@
 package org.eclipse.jgit.internal.storage.file;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.eclipse.jgit.lib.Constants.BISECT_HEAD;
+import static org.eclipse.jgit.lib.Constants.CHERRY_PICK_HEAD;
+import static org.eclipse.jgit.lib.Constants.FETCH_HEAD;
 import static org.eclipse.jgit.lib.Constants.HEAD;
 import static org.eclipse.jgit.lib.Constants.LOGS;
 import static org.eclipse.jgit.lib.Constants.L_LOGS;
+import static org.eclipse.jgit.lib.Constants.MERGE_HEAD;
+import static org.eclipse.jgit.lib.Constants.ORIG_HEAD;
+import static org.eclipse.jgit.lib.Constants.REVERT_HEAD;
 import static org.eclipse.jgit.lib.Constants.OBJECT_ID_STRING_LENGTH;
 import static org.eclipse.jgit.lib.Constants.PACKED_REFS;
+import static org.eclipse.jgit.lib.Constants.R_BISECT;
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
 import static org.eclipse.jgit.lib.Constants.R_REFS;
+import static org.eclipse.jgit.lib.Constants.R_REWRITTEN;
 import static org.eclipse.jgit.lib.Constants.R_TAGS;
+import static org.eclipse.jgit.lib.Constants.R_WORKTREE;
 import static org.eclipse.jgit.lib.Ref.Storage.LOOSE;
 import static org.eclipse.jgit.lib.Ref.Storage.NEW;
 import static org.eclipse.jgit.lib.Ref.Storage.PACKED;
@@ -50,6 +59,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -230,6 +240,20 @@ public class RefDirectory extends RefDatabase {
 
 	/**
 	 * Locate the log file on disk for a single reference name.
+	 * <p>
+	 * Follows the same per-worktree routing as {@link #fileFor(String)}: the
+	 * reflog of a {@link #isPerWorktreePseudoRef(String) pseudo-ref} or of a
+	 * ref under {@link #isPerWorktreeRef(String) refs/bisect|worktree|rewritten}
+	 * lives under this worktree's own {@code gitDir/logs/}, not the common
+	 * {@code logsDir}/{@code logsRefsDir} shared by all worktrees. For a
+	 * non-worktree repository {@code gitDir == gitCommonDir}, so this
+	 * resolves to the exact same path as before this routing was introduced.
+	 * <p>
+	 * Example, for the same linked worktree {@code feature} as
+	 * {@link #fileFor(String)}: {@code logFor("ORIG_HEAD")} &rarr;
+	 * {@code /repo/.git/worktrees/feature/logs/ORIG_HEAD}, while
+	 * {@code logFor("refs/heads/main")} &rarr;
+	 * {@code /repo/.git/logs/refs/heads/main} (shared).
 	 *
 	 * @param name
 	 *            name of the ref, relative to the Git repository top level
@@ -238,8 +262,15 @@ public class RefDirectory extends RefDatabase {
 	 */
 	public File logFor(String name) {
 		if (name.startsWith(R_REFS)) {
-			name = name.substring(R_REFS.length());
-			return new File(logsRefsDir, name);
+			String refPath = name.substring(R_REFS.length());
+			if (isPerWorktreeRef(name)) {
+				return new File(new File(new File(gitDir, LOGS), R_REFS),
+						refPath);
+			}
+			return new File(logsRefsDir, refPath);
+		}
+		if (isPerWorktreePseudoRef(name)) {
+			return new File(new File(gitDir, LOGS), name);
 		}
 		return new File(logsDir, name);
 	}
@@ -1427,7 +1458,91 @@ public class RefDirectory extends RefDatabase {
 	}
 
 	/**
+	 * Per-worktree pseudo-refs whose files reside in the worktree's own git
+	 * directory rather than the common directory. This set is the union of
+	 * two distinct native git mechanisms:
+	 * <ul>
+	 * <li>{@code path.c:common_list[]}, which routes named pseudo-refs
+	 * ({@code ORIG_HEAD}, {@code MERGE_HEAD}, {@code CHERRY_PICK_HEAD},
+	 * {@code REVERT_HEAD}, {@code BISECT_HEAD}) to either the worktree or the
+	 * common directory depending on whether they appear in the list.
+	 * {@code FETCH_HEAD} is absent from {@code common_list[]}, so — like
+	 * {@code HEAD} — it defaults to per-worktree: a {@code git fetch} run
+	 * inside a linked worktree writes its own {@code FETCH_HEAD} there,
+	 * distinct from the common directory's.</li>
+	 * <li>{@code refs.c:is_per_worktree_ref()}, which additionally routes
+	 * {@code HEAD} itself and the three ref namespaces {@code refs/bisect/},
+	 * {@code refs/worktree/}, and {@code refs/rewritten/} to the worktree,
+	 * independently of {@code common_list[]}.</li>
+	 * </ul>
+	 * JGit's {@link #fileFor(String)} and {@link #logFor(String)} are a
+	 * single, unified router, so their per-worktree set must be the union of
+	 * both native mechanisms.
+	 * <p>
+	 * This is a fixed, explicit set rather than a syntactic "all-uppercase"
+	 * heuristic, to avoid misrouting names such as {@code COMMIT_EDITMSG} or
+	 * {@code MERGE_MSG}, which look like pseudo-refs but are not refs at all.
+	 */
+	private static final Set<String> PER_WORKTREE_PSEUDO_REFS = Set.of(
+			HEAD, ORIG_HEAD, MERGE_HEAD, CHERRY_PICK_HEAD,
+			REVERT_HEAD, BISECT_HEAD, FETCH_HEAD);
+
+	/**
+	 * Returns {@code true} if {@code name} is a per-worktree pseudo-ref whose
+	 * file must be resolved from the worktree's own git directory rather than
+	 * the common directory.
+	 *
+	 * @param name
+	 *            ref name to check
+	 * @return {@code true} if the file for this ref lives in the worktree's
+	 *         git directory
+	 */
+	static boolean isPerWorktreePseudoRef(String name) {
+		return PER_WORKTREE_PSEUDO_REFS.contains(name);
+	}
+
+	/**
+	 * Returns {@code true} if {@code name} is a per-worktree ref whose storage
+	 * must be resolved from the worktree's own git directory rather than the
+	 * common directory. This covers {@link #isPerWorktreePseudoRef(String)
+	 * pseudo-refs} and refs under {@code refs/bisect/}, {@code refs/worktree/},
+	 * or {@code refs/rewritten/}.
+	 *
+	 * @param name
+	 *            full ref name to check
+	 * @return {@code true} if the ref lives in the worktree git directory
+	 */
+	static boolean isPerWorktreeRef(String name) {
+		if (isPerWorktreePseudoRef(name)) {
+			return true;
+		}
+		return name.startsWith(R_BISECT) || name.startsWith(R_WORKTREE)
+				|| name.startsWith(R_REWRITTEN);
+	}
+
+	/**
 	 * Locate the file on disk for a single reference name.
+	 * <p>
+	 * Per-worktree refs ({@link #isPerWorktreePseudoRef(String) pseudo-refs}
+	 * and the {@link #isPerWorktreeRef(String) refs/bisect|worktree|rewritten
+	 * namespaces}) resolve under this worktree's own {@link #gitDir}; every
+	 * other ref resolves under the {@link #gitCommonDir} shared by all
+	 * worktrees. For a non-worktree repository {@code gitDir == gitCommonDir}
+	 * (see {@link org.eclipse.jgit.util.FS#getCommonDir}), so both branches
+	 * resolve to the exact same path and this routing is a no-op.
+	 * <p>
+	 * Example, for a linked worktree named {@code feature} whose common
+	 * directory is {@code /repo/.git}:
+	 * <ul>
+	 * <li>{@code fileFor("ORIG_HEAD")} &rarr;
+	 * {@code /repo/.git/worktrees/feature/ORIG_HEAD} (per-worktree
+	 * pseudo-ref).</li>
+	 * <li>{@code fileFor("refs/bisect/bad")} &rarr;
+	 * {@code /repo/.git/worktrees/feature/refs/bisect/bad} (per-worktree
+	 * namespace).</li>
+	 * <li>{@code fileFor("refs/heads/main")} &rarr;
+	 * {@code /repo/.git/refs/heads/main} (shared by every worktree).</li>
+	 * </ul>
 	 *
 	 * @param name
 	 *            name of the ref, relative to the Git repository top level
@@ -1436,12 +1551,13 @@ public class RefDirectory extends RefDatabase {
 	 */
 	File fileFor(String name) {
 		if (name.startsWith(R_REFS)) {
-			name = name.substring(R_REFS.length());
-			return new File(refsDir, name);
+			String refPath = name.substring(R_REFS.length());
+			if (isPerWorktreeRef(name)) {
+				return new File(new File(gitDir, R_REFS), refPath);
+			}
+			return new File(refsDir, refPath);
 		}
-		// HEAD needs to get resolved from git dir as resolving it from common dir
-		// would always lead back to current default branch
-		if (name.equals(HEAD)) {
+		if (isPerWorktreePseudoRef(name)) {
 			return new File(gitDir, name);
 		}
 		return new File(gitCommonDir, name);

@@ -10,8 +10,6 @@
 
 package org.eclipse.jgit.internal.storage.file;
 
-import static org.eclipse.jgit.lib.Constants.HEAD;
-
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -39,7 +37,10 @@ class ReflogReaderImpl implements ReflogReader {
 	 *            {@code Ref} name
 	 */
 	ReflogReaderImpl(Repository db, String refname) {
-		File logBaseDir = refname.equals(HEAD) ? db.getDirectory()
+		// Per-worktree refs (HEAD, ORIG_HEAD, refs/worktree/, …) have their
+		// reflog in the worktree's own git directory, not in the common dir.
+		File logBaseDir = RefDirectory.isPerWorktreeRef(refname)
+				? db.getDirectory()
 				: db.getCommonDirectory();
 		logName = new File(logBaseDir, Constants.L_LOGS + refname);
 	}

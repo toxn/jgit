@@ -19,7 +19,6 @@ import java.util.List;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.internal.JGitText;
-import org.eclipse.jgit.internal.worktree.Worktrees;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Repository;
 
@@ -126,16 +125,6 @@ public class WorktreeRepairCommand extends GitCommand<List<String>> {
 			repaired.add(entry.name);
 		}
 		return repaired;
-	}
-
-	/**
-	 * Checks if there is a stale gitdir pointer in the admin dir that can be
-	 * compared against the candidate new path.
-	 */
-	@SuppressWarnings("unused")
-	private static boolean isStale(File adminDir, File newPath) throws IOException {
-		File oldPath = Worktrees.readWorktreePath(adminDir);
-		return oldPath == null || !oldPath.getAbsoluteFile().equals(newPath);
 	}
 
 	private static final class RepairEntry {

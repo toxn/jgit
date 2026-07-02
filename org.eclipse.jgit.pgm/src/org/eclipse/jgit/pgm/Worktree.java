@@ -283,6 +283,11 @@ class Worktree extends TextBuiltin {
 	 * /path/to/worktree  abcdef12 [branch-name]
 	 * /path/to/other     deadbeef (detached HEAD)
 	 * </pre>
+	 *
+	 * @param worktrees
+	 *            worktrees to print
+	 * @throws IOException
+	 *             if writing to stdout fails
 	 */
 	private void printDefault(List<WorktreeReference> worktrees)
 			throws IOException {
@@ -344,6 +349,11 @@ class Worktree extends TextBuiltin {
 	 * detached
 	 *
 	 * </pre>
+	 *
+	 * @param worktrees
+	 *            worktrees to print
+	 * @throws IOException
+	 *             if writing to stdout fails
 	 */
 	private void printPorcelain(List<WorktreeReference> worktrees)
 			throws IOException {
