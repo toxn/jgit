@@ -17,12 +17,14 @@ import static org.junit.Assert.assertTrue;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.List;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.WorktreeAddCommand;
 import org.eclipse.jgit.junit.RepositoryTestCase;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.RefUpdate.Result;
 import org.eclipse.jgit.lib.Repository;
@@ -326,6 +328,125 @@ public class PerWorktreeRefTest extends RepositoryTestCase {
 					Constants.ORIG_HEAD);
 			assertFalse("ORIG_HEAD reflog must NOT be in common dir", //$NON-NLS-1$
 					commonLog.exists());
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Enumeration (getRefs(ALL) / getRefsByPrefix)
+	// -----------------------------------------------------------------------
+
+	/**
+	 * A per-worktree ref written in a linked worktree must be listed by
+	 * {@link org.eclipse.jgit.lib.RefDatabase#getRefs()} (which enumerates
+	 * with {@code RefDatabase.ALL}) when called from that worktree, and must
+	 * NOT be listed from the main repository or from another worktree.
+	 */
+	@Test
+	public void testWorktreePrefixVisibleViaGetRefsAll() throws Exception {
+		String refName = Constants.R_WORKTREE + "example"; //$NON-NLS-1$
+		File wtAPath = new File(db.getWorkTree().getParentFile(), "wt-enum-a"); //$NON-NLS-1$
+		File wtBPath = new File(db.getWorkTree().getParentFile(), "wt-enum-b"); //$NON-NLS-1$
+
+		try (Repository wtA = new WorktreeAddCommand(db)
+				.setPath(wtAPath)
+				.setNewBranch("wt-enum-a-branch") //$NON-NLS-1$
+				.call();
+			 Repository wtB = new WorktreeAddCommand(db)
+				.setPath(wtBPath)
+				.setNewBranch("wt-enum-b-branch") //$NON-NLS-1$
+				.call()) {
+
+			RefUpdate u = wtA.updateRef(refName);
+			u.setNewObjectId(initialCommit.getId());
+			u.setForceUpdate(true);
+			u.forceUpdate();
+
+			assertTrue("refs/worktree/example must be listed by getRefs() from wtA", //$NON-NLS-1$
+					containsRef(wtA.getRefDatabase().getRefs(), refName));
+			assertFalse("refs/worktree/example must NOT be listed from the main repo", //$NON-NLS-1$
+					containsRef(db.getRefDatabase().getRefs(), refName));
+			assertFalse("refs/worktree/example must NOT be listed from wtB", //$NON-NLS-1$
+					containsRef(wtB.getRefDatabase().getRefs(), refName));
+		}
+	}
+
+	/**
+	 * The same per-worktree ref must also be visible via
+	 * {@code getRefsByPrefix("refs/")}, since callers such as
+	 * {@code packRefs()} and {@code isNameConflicting()} enumerate that way
+	 * rather than via {@code RefDatabase.ALL}; native git's for-each-ref
+	 * shows per-worktree refs under a plain {@code refs/} prefix too.
+	 */
+	@Test
+	public void testWorktreePrefixVisibleViaGetRefsByPrefixRefs() throws Exception {
+		String refName = Constants.R_WORKTREE + "example"; //$NON-NLS-1$
+		File wtPath = new File(db.getWorkTree().getParentFile(), "wt-enum-prefix"); //$NON-NLS-1$
+		try (Repository wt = new WorktreeAddCommand(db)
+				.setPath(wtPath)
+				.setNewBranch("wt-enum-prefix-branch") //$NON-NLS-1$
+				.call()) {
+
+			RefUpdate u = wt.updateRef(refName);
+			u.setNewObjectId(initialCommit.getId());
+			u.setForceUpdate(true);
+			u.forceUpdate();
+
+			List<Ref> refs = wt.getRefDatabase().getRefsByPrefix(Constants.R_REFS);
+			assertTrue("refs/worktree/example must be listed by getRefsByPrefix(\"refs/\")", //$NON-NLS-1$
+					containsRef(refs, refName));
+		}
+	}
+
+	private static boolean containsRef(List<Ref> refs, String name) {
+		for (Ref r : refs) {
+			if (name.equals(r.getName())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// -----------------------------------------------------------------------
+	// pack-refs guard
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Per-worktree refs (refs/bisect/, refs/worktree/, refs/rewritten/) must
+	 * never be packed into the common packed-refs file; native git refuses
+	 * to pack them too.
+	 */
+	@Test
+	public void testPackRefsDoesNotPackPerWorktreeRefs() throws Exception {
+		String refName = Constants.R_WORKTREE + "example"; //$NON-NLS-1$
+		File wtPath = new File(db.getWorkTree().getParentFile(), "wt-packrefs"); //$NON-NLS-1$
+		try (Repository wt = new WorktreeAddCommand(db)
+				.setPath(wtPath)
+				.setNewBranch("wt-packrefs-branch") //$NON-NLS-1$
+				.call()) {
+
+			RefUpdate u = wt.updateRef(refName);
+			u.setNewObjectId(initialCommit.getId());
+			u.setForceUpdate(true);
+			u.forceUpdate();
+
+			try (Git git = new Git(wt)) {
+				git.packRefs().setAll(true).call();
+			}
+
+			// The loose file must still exist: it was never packed away.
+			File looseFile = new File(new File(wt.getDirectory(), Constants.R_REFS),
+					"worktree/example"); //$NON-NLS-1$
+			assertTrue("refs/worktree/example must remain loose after pack-refs", //$NON-NLS-1$
+					looseFile.exists());
+
+			// The common packed-refs file must not mention it.
+			File packedRefs = new File(wt.getCommonDirectory(), "packed-refs"); //$NON-NLS-1$
+			if (packedRefs.exists()) {
+				String content = new String(
+						Files.readAllBytes(packedRefs.toPath()), StandardCharsets.UTF_8);
+				assertFalse("packed-refs must not contain refs/worktree/example", //$NON-NLS-1$
+						content.contains(refName));
+			}
 		}
 	}
 }

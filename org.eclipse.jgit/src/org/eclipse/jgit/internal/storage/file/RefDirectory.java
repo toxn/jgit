@@ -60,6 +60,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -324,7 +325,11 @@ public class RefDirectory extends RefDatabase {
 		pm.beginTask(JGitText.get().packRefs, refs.size());
 		try {
 			for (Ref ref : refs) {
-				if (!ref.isSymbolic() && ref.getStorage().isLoose()) {
+				// Per-worktree refs (refs/bisect/, refs/worktree/,
+				// refs/rewritten/) must never be packed into the common
+				// packed-refs file; native git refuses to pack them too.
+				if (!ref.isSymbolic() && ref.getStorage().isLoose()
+						&& !isPerWorktreeRef(ref.getName())) {
 					refsToBePacked.add(ref.getName());
 				}
 				pm.update(1);
@@ -501,7 +506,7 @@ public class RefDirectory extends RefDatabase {
 		void scan(String prefix) {
 			if (ALL.equals(prefix)) {
 				scanOne(HEAD);
-				scanTree(R_REFS, refsDir);
+				scanMergedRefsTree();
 
 				// If any entries remain, they are deleted, drop them.
 				if (newLoose == null && curIdx < curLoose.size())
@@ -509,8 +514,18 @@ public class RefDirectory extends RefDatabase {
 
 			} else if (prefix.startsWith(R_REFS) && prefix.endsWith("/")) { //$NON-NLS-1$
 				curIdx = -(curLoose.find(prefix) + 1);
-				File dir = new File(refsDir, prefix.substring(R_REFS.length()));
-				scanTree(prefix, dir);
+				// The bare "refs/" prefix must see the same merged view as
+				// ALL (minus HEAD): callers such as packRefs() and
+				// isNameConflicting() enumerate via getRefsByPrefix(R_REFS),
+				// not getRefs(ALL), and native git's for-each-ref shows
+				// per-worktree refs (refs/bisect/, refs/worktree/,
+				// refs/rewritten/) under a plain "refs/" prefix too.
+				if (R_REFS.equals(prefix)) {
+					scanMergedRefsTree();
+				} else {
+					File dir = dirForRefsPrefix(prefix);
+					scanTree(prefix, dir);
+				}
 
 				// Skip over entries still within the prefix; these have
 				// been removed from the directory.
@@ -527,6 +542,50 @@ public class RefDirectory extends RefDatabase {
 				if (newLoose != null) {
 					while (curIdx < curLoose.size())
 						newLoose.add(curLoose.get(curIdx++));
+				}
+			}
+		}
+
+		/**
+		 * Scans the full {@code refs/} tree for {@link #scan(String)} when
+		 * called with {@link RefDatabase#ALL} or with the bare {@code "refs/"}
+		 * prefix.
+		 * <p>
+		 * Refs common to all worktrees live under {@link #refsDir}; the
+		 * per-worktree namespaces ({@code refs/bisect/},
+		 * {@code refs/worktree/}, {@code refs/rewritten/}) live under the
+		 * current worktree's own git directory. Naively scanning both roots
+		 * independently would, for a non-worktree repository (where
+		 * {@code gitDir == gitCommonDir}), scan the very same physical
+		 * directory twice and duplicate entries. Instead the top-level
+		 * entries of both roots are merged into a single, globally sorted
+		 * listing before recursing, so each physical name is scanned exactly
+		 * once and {@link #scanOne(String)} sees ref names in the strictly
+		 * ascending order it expects to stay in sync with {@link #curLoose}.
+		 */
+		private void scanMergedRefsTree() {
+			Map<String, File> topLevel = new TreeMap<>();
+			String[] common = refsDir.list(LockFile.FILTER);
+			if (common != null) {
+				for (String e : common) {
+					String key = new File(refsDir, e).isDirectory() ? e + '/' : e;
+					topLevel.put(key, refsDir);
+				}
+			}
+			if (!gitDir.equals(gitCommonDir)) {
+				File worktreeRefsDir = new File(gitDir, R_REFS);
+				for (String ns : PER_WORKTREE_REFS_NAMESPACES) {
+					if (new File(worktreeRefsDir, ns).isDirectory()) {
+						topLevel.put(ns + '/', worktreeRefsDir);
+					}
+				}
+			}
+			for (Map.Entry<String, File> e : topLevel.entrySet()) {
+				String name = e.getKey();
+				if (name.charAt(name.length() - 1) == '/') {
+					scanTree(R_REFS + name, new File(e.getValue(), name));
+				} else {
+					scanOne(R_REFS + name);
 				}
 			}
 		}
@@ -1521,6 +1580,14 @@ public class RefDirectory extends RefDatabase {
 	}
 
 	/**
+	 * Top-level directory names under {@code refs/} that are per-worktree
+	 * namespaces, whose storage is rooted at the worktree's own git
+	 * directory rather than {@link #refsDir}.
+	 */
+	private static final String[] PER_WORKTREE_REFS_NAMESPACES = {
+			"bisect", "worktree", "rewritten" }; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+
+	/**
 	 * Locate the file on disk for a single reference name.
 	 * <p>
 	 * Per-worktree refs ({@link #isPerWorktreePseudoRef(String) pseudo-refs}
@@ -1561,6 +1628,28 @@ public class RefDirectory extends RefDatabase {
 			return new File(gitDir, name);
 		}
 		return new File(gitCommonDir, name);
+	}
+
+	/**
+	 * Resolves the directory backing a {@code refs/} prefix (as passed to
+	 * {@link #getRefs(String)}/{@link #getRefsByPrefix(String...)}),
+	 * redirecting per-worktree namespaces ({@code refs/bisect/},
+	 * {@code refs/worktree/}, {@code refs/rewritten/}) to the current
+	 * worktree's own git directory. For a non-worktree repository
+	 * {@code gitDir == gitCommonDir}, so this resolves to the exact same
+	 * directory as before this per-worktree routing was introduced.
+	 *
+	 * @param prefix
+	 *            a prefix starting with {@code refs/} and ending with
+	 *            {@code /}
+	 * @return the directory to scan for this prefix
+	 */
+	private File dirForRefsPrefix(String prefix) {
+		String rel = prefix.substring(R_REFS.length());
+		if (isPerWorktreeRef(prefix)) {
+			return new File(new File(gitDir, R_REFS), rel);
+		}
+		return new File(refsDir, rel);
 	}
 
 	static int levelsIn(String name) {
